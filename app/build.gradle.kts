@@ -39,14 +39,6 @@ android {
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
-    packaging {
-        resources {
-            // Multiple Netty jars (pulled in transitively by hivemq-mqtt-client) each ship these,
-            // causing a duplicate-path merge failure.
-            excludes += "META-INF/INDEX.LIST"
-            excludes += "META-INF/io.netty.versions.properties"
-        }
-    }
 }
 
 dependencies {
@@ -65,11 +57,13 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
-    implementation(libs.hivemq.mqtt.client)
+    implementation(libs.okhttp)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -15,15 +15,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
+import com.brendan.controlanything.domain.model.TopicValue
 
 private val OFF_COLOR = Color(0xFF616161)
 
 @Composable
 fun LedIndicatorWidget(
     definition: OutputDef.LedIndicator,
-    value: MqttValue.Bool?,
+    value: TopicValue.Bool?,
     modifier: Modifier = Modifier,
 ) {
     Box(

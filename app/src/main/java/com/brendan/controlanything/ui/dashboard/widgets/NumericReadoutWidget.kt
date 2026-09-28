@@ -8,13 +8,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
+import com.brendan.controlanything.domain.model.TopicValue
 
 @Composable
 fun NumericReadoutWidget(
     definition: OutputDef.NumericReadout,
-    value: MqttValue.Number?,
+    value: TopicValue.Number?,
     modifier: Modifier = Modifier,
 ) {
     Box(

@@ -1,4 +1,4 @@
-package com.brendan.controlanything.data.mqtt
+package com.brendan.controlanything.data.device
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -10,10 +10,11 @@ import kotlinx.serialization.json.JsonElement
  */
 @Serializable
 data class InfoMessage(
-    val device_id: String,
+    // Not yet emitted by the embedded library, and nothing in the app depends on them yet.
+    val device_id: String = "",
     val device_name: String,
     val project_id: String,
-    val schema_hash: String,
+    val schema_hash: String = "",
     val controls: List<WidgetSpecJson> = emptyList(),
     val outputs: List<WidgetSpecJson> = emptyList(),
 )

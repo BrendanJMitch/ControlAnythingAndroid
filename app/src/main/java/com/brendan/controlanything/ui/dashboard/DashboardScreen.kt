@@ -52,9 +52,9 @@ import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.DashboardOrientation
 import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.LedColor
-import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
 import com.brendan.controlanything.domain.model.SliderOrientation
+import com.brendan.controlanything.domain.model.TopicValue
 import com.brendan.controlanything.ui.dashboard.grid.DashboardGrid
 import com.brendan.controlanything.ui.dashboard.grid.gridPosition
 import com.brendan.controlanything.ui.dashboard.widgets.ButtonWidget
@@ -116,7 +116,7 @@ private fun DashboardContent(
     uiState: DashboardUiState,
     onWidgetMoved: (String, GridPosition) -> Unit,
     onColumnCountChanged: (Int) -> Unit,
-    onControlChanged: (String, MqttValue) -> Unit,
+    onControlChanged: (String, TopicValue) -> Unit,
     onOrientationChanged: (DashboardOrientation) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -206,32 +206,32 @@ private fun DashboardContent(
                             when {
                                 output is OutputDef.NumericReadout -> NumericReadoutWidget(
                                     definition = output,
-                                    value = uiState.outputValues[output.topic] as? MqttValue.Number,
+                                    value = uiState.outputValues[output.topic] as? TopicValue.Number,
                                 )
                                 output is OutputDef.LedIndicator -> LedIndicatorWidget(
                                     definition = output,
-                                    value = uiState.outputValues[output.topic] as? MqttValue.Bool,
+                                    value = uiState.outputValues[output.topic] as? TopicValue.Bool,
                                 )
                                 control is ControlDef.Toggle -> ToggleWidget(
                                     definition = control,
-                                    isOn = (uiState.controlValues[control.topic] as? MqttValue.Bool)?.value ?: false,
-                                    onToggle = { onControlChanged(control.topic, MqttValue.Bool(it)) },
+                                    isOn = (uiState.controlValues[control.topic] as? TopicValue.Bool)?.value ?: false,
+                                    onToggle = { onControlChanged(control.topic, TopicValue.Bool(it)) },
                                 )
                                 control is ControlDef.Button -> ButtonWidget(
                                     definition = control,
-                                    onValueChange = { onControlChanged(control.topic, MqttValue.Bool(it)) },
+                                    onValueChange = { onControlChanged(control.topic, TopicValue.Bool(it)) },
                                 )
                                 control is ControlDef.Slider -> SliderWidget(
                                     definition = control,
-                                    value = (uiState.controlValues[control.topic] as? MqttValue.Number)?.value
+                                    value = (uiState.controlValues[control.topic] as? TopicValue.Number)?.value
                                         ?: control.defaultValue,
-                                    onValueChange = { onControlChanged(control.topic, MqttValue.Number(it)) },
+                                    onValueChange = { onControlChanged(control.topic, TopicValue.Number(it)) },
                                 )
                                 control is ControlDef.Joystick -> JoystickWidget(
                                     definition = control,
                                     onValueChange = { x, y ->
-                                        onControlChanged(control.topicX, MqttValue.Number(x))
-                                        onControlChanged(control.topicY, MqttValue.Number(y))
+                                        onControlChanged(control.topicX, TopicValue.Number(x))
+                                        onControlChanged(control.topicY, TopicValue.Number(y))
                                     },
                                 )
                                 else -> Unit
@@ -349,11 +349,11 @@ private fun DashboardScreenPreview() {
                 deviceInfo = fakeDeviceInfoForPreview(),
                 columnCount = 4,
                 positions = fakePositionsForPreview(),
-                outputValues = mapOf("battery" to MqttValue.Number(12.4f), "status" to MqttValue.Bool(true)),
+                outputValues = mapOf("battery" to TopicValue.Number(12.4f), "status" to TopicValue.Bool(true)),
                 controlValues = mapOf(
-                    "speed" to MqttValue.Number(0.2f),
-                    "headlights" to MqttValue.Bool(true),
-                    "tilt" to MqttValue.Number(90f),
+                    "speed" to TopicValue.Number(0.2f),
+                    "headlights" to TopicValue.Bool(true),
+                    "tilt" to TopicValue.Number(90f),
                 ),
             ),
             onWidgetMoved = { _, _ -> },

@@ -1,11 +1,10 @@
-package com.brendan.controlanything.data.mqtt
+package com.brendan.controlanything.data.device
 
 import com.brendan.controlanything.domain.model.ButtonMode
 import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.LedColor
 import com.brendan.controlanything.domain.model.OutputDef
 import com.brendan.controlanything.domain.model.SliderOrientation
-import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -13,7 +12,36 @@ import org.junit.Test
 
 class InfoMapperTest {
 
-    private fun parse(json: String) = Json.decodeFromString<InfoMessage>(json).toDeviceInfo()
+    private fun parse(json: String) = requireNotNull(parseInfo(json))
+
+    @Test
+    fun `device_id and schema_hash are optional`() {
+        val info = parse("""{"device_name": "Test Rover", "project_id": "test_project"}""")
+        assertEquals("", info.deviceId)
+        assertEquals("", info.schemaHash)
+        assertTrue(info.controls.isEmpty())
+    }
+
+    @Test
+    fun `unknown keys are ignored`() {
+        val info = parse(
+            """
+            {
+              "device_name": "Test Rover",
+              "project_id": "test_project",
+              "firmware_version": "1.2.3",
+              "controls": [{"topic": ["lights"], "display_name": "Lights", "type": "bool", "icon": "bulb", "widget": {"type": "toggle", "haptics": true}}]
+            }
+            """.trimIndent(),
+        )
+        assertEquals(listOf(ControlDef.Toggle("lights", "Lights")), info.controls)
+    }
+
+    @Test
+    fun `malformed or incomplete payloads yield null`() {
+        assertNull(parseInfo("not json"))
+        assertNull(parseInfo("""{"device_name": "Missing project id"}"""))
+    }
 
     @Test
     fun `parses device metadata`() {

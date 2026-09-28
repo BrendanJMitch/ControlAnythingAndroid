@@ -1,6 +1,5 @@
 package com.brendan.controlanything.ui.discovery
 
-import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,27 +38,25 @@ fun DiscoveryScreen(
     viewModel: DiscoveryViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    var hasLocalNetworkPermission by remember {
+    val permissions = viewModel.requiredPermissions
+    var hasPermissions by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_LOCAL_NETWORK,
-            ) == PackageManager.PERMISSION_GRANTED
+            permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED },
         )
     }
 
-    val requestPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted -> hasLocalNetworkPermission = granted }
+    val requestPermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results -> hasPermissions = permissions.all { results[it] == true } }
 
     LaunchedEffect(Unit) {
-        if (!hasLocalNetworkPermission) {
-            requestPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+        if (!hasPermissions) {
+            requestPermissions.launch(permissions.toTypedArray())
         }
     }
 
-    LaunchedEffect(hasLocalNetworkPermission) {
-        if (hasLocalNetworkPermission) {
+    LaunchedEffect(hasPermissions) {
+        if (hasPermissions) {
             viewModel.startDiscovery()
         }
     }
@@ -68,12 +65,12 @@ fun DiscoveryScreen(
         viewModel.navigateToDashboard.collectLatest { onDeviceReady() }
     }
 
-    if (hasLocalNetworkPermission) {
+    if (hasPermissions) {
         val state by viewModel.uiState.collectAsStateWithLifecycle()
         DiscoveryContent(state = state, modifier = modifier.fillMaxSize())
     } else {
         PermissionRequiredContent(
-            onRequestPermission = { requestPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK) },
+            onRequestPermission = { requestPermissions.launch(permissions.toTypedArray()) },
             modifier = modifier.fillMaxSize(),
         )
     }
@@ -89,10 +86,10 @@ private fun PermissionRequiredContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Local network access needed", style = MaterialTheme.typography.titleMedium)
+        Text("Permission needed", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Text(
-            "ControlAnything needs local network access to find and connect to your robot.",
+            "ControlAnything needs access to nearby devices to find and connect to your project.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
@@ -117,10 +114,10 @@ private fun DiscoveryContent(
             is DiscoveryUiState.Searching -> {
                 CircularProgressIndicator()
                 Spacer(Modifier.height(24.dp))
-                Text("Searching for your robot...", style = MaterialTheme.typography.titleMedium)
+                Text("Searching for your device...", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Make sure your phone is connected to your robot's Wi-Fi network.",
+                    "Make sure your device is powered on and your phone is on the same network.",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                 )
@@ -130,8 +127,14 @@ private fun DiscoveryContent(
                 CircularProgressIndicator()
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    text = state.label?.let { "Connecting to $it..." } ?: "Connecting...",
+                    text = buildString {
+                        append("Connecting")
+                        state.label?.let { append(" to $it") }
+                        state.transport?.let { append(" over $it") }
+                        append("...")
+                    },
                     style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
                 )
             }
 
@@ -168,7 +171,7 @@ private fun DiscoveryContentSearchingPreview() {
 @Composable
 private fun DiscoveryContentConnectingPreview() {
     ControlAnythingTheme {
-        DiscoveryContent(state = DiscoveryUiState.Connecting(label = "Rover 2"), modifier = Modifier.fillMaxSize())
+        DiscoveryContent(state = DiscoveryUiState.Connecting(label = "Rover 2", transport = "Wi-Fi"), modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -177,7 +180,7 @@ private fun DiscoveryContentConnectingPreview() {
 private fun DiscoveryContentErrorPreview() {
     ControlAnythingTheme {
         DiscoveryContent(
-            state = DiscoveryUiState.Error("Lost connection to the broker."),
+            state = DiscoveryUiState.Error("Lost connection to Rover 2"),
             modifier = Modifier.fillMaxSize(),
         )
     }

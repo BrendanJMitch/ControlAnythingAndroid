@@ -2,17 +2,17 @@ package com.brendan.controlanything.ui.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.brendan.controlanything.data.device.DeviceRepository
 import com.brendan.controlanything.data.layout.LayoutRepository
-import com.brendan.controlanything.data.mqtt.MqttRepository
 import com.brendan.controlanything.domain.grid.GridEngine
 import com.brendan.controlanything.domain.grid.GridPosition
 import com.brendan.controlanything.domain.grid.PlacedWidget
 import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.DashboardOrientation
 import com.brendan.controlanything.domain.model.DeviceInfo
-import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
 import com.brendan.controlanything.domain.model.SliderOrientation
+import com.brendan.controlanything.domain.model.TopicValue
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -29,26 +29,25 @@ internal const val DEFAULT_COLUMN_COUNT = 4
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    private val mqttRepository: MqttRepository,
+    private val deviceRepository: DeviceRepository,
     private val layoutRepository: LayoutRepository,
 ) : ViewModel() {
 
     private val columnCount = MutableStateFlow(DEFAULT_COLUMN_COUNT)
     private val positions = MutableStateFlow<List<PlacedWidget>>(emptyList())
-    private val outputValues = MutableStateFlow<Map<String, MqttValue>>(emptyMap())
-    private val controlValues = MutableStateFlow<Map<String, MqttValue>>(emptyMap())
+    private val outputValues = MutableStateFlow<Map<String, TopicValue>>(emptyMap())
     private val orientation = MutableStateFlow(DashboardOrientation.PORTRAIT)
 
     // kotlinx.coroutines' typed combine() only goes up to 5 flows - nest to stay type-safe at 6.
     val uiState: StateFlow<DashboardUiState> = combine(
         combine(
-            mqttRepository.deviceInfo,
+            deviceRepository.deviceInfo,
             columnCount,
             positions,
             outputValues,
             ::CoreState,
         ),
-        controlValues,
+        deviceRepository.controlValues,
         orientation,
     ) { core, controlValues, orientation ->
         DashboardUiState(core.deviceInfo, core.columnCount, core.positions, core.outputValues, controlValues, orientation)
@@ -60,13 +59,12 @@ class DashboardViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            mqttRepository.deviceInfo.filterNotNull().collect { deviceInfo ->
+            deviceRepository.deviceInfo.filterNotNull().collect { deviceInfo ->
                 if (deviceInfo != lastDeviceInfo) {
                     lastDeviceInfo = deviceInfo
                     currentProjectId = deviceInfo.projectId
                     reconcileLayout(deviceInfo)
                     observeOutputs(deviceInfo)
-                    seedControlDefaults(deviceInfo)
                 }
             }
         }
@@ -105,10 +103,10 @@ class DashboardViewModel @Inject constructor(
         observeOutputsJob = viewModelScope.launch {
             deviceInfo.outputs.forEach { output ->
                 launch {
-                    mqttRepository.observeTopic(output.topic).collect { raw ->
+                    deviceRepository.observeOutput(output.topic).collect { raw ->
                         val value = when (output) {
-                            is OutputDef.NumericReadout -> raw.toFloatOrNull()?.let { MqttValue.Number(it) }
-                            is OutputDef.LedIndicator -> raw.toBooleanStrictOrNull()?.let { MqttValue.Bool(it) }
+                            is OutputDef.NumericReadout -> raw.toFloatOrNull()?.let { TopicValue.Number(it) }
+                            is OutputDef.LedIndicator -> raw.toBooleanStrictOrNull()?.let { TopicValue.Bool(it) }
                         }
                         if (value != null) {
                             outputValues.value = outputValues.value + (output.topic to value)
@@ -151,31 +149,9 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Seeds a neutral starting value for every control - the app is the source of truth for what it last commanded. */
-    private fun seedControlDefaults(deviceInfo: DeviceInfo) {
-        val defaults = mutableMapOf<String, MqttValue>()
-        deviceInfo.controls.forEach { control ->
-            when (control) {
-                is ControlDef.Toggle -> defaults[control.topic] = MqttValue.Bool(control.defaultValue)
-                is ControlDef.Slider -> defaults[control.topic] = MqttValue.Number(control.defaultValue)
-                is ControlDef.Joystick -> {
-                    defaults[control.topicX] = MqttValue.Number(0f)
-                    defaults[control.topicY] = MqttValue.Number(0f)
-                }
-                is ControlDef.Button -> Unit
-            }
-        }
-        controlValues.value = defaults
-    }
-
-    /** [topic] is a leaf name (e.g. a joystick axis); publishes are never retained for controls. */
-    fun onControlChanged(topic: String, value: MqttValue) {
-        controlValues.value = controlValues.value + (topic to value)
-        val payload = when (value) {
-            is MqttValue.Bool -> value.value.toString()
-            is MqttValue.Number -> value.value.toString()
-        }
-        mqttRepository.publish(topic, payload, retained = false)
+    /** [topic] is a leaf name (e.g. a joystick axis). */
+    fun onControlChanged(topic: String, value: TopicValue) {
+        deviceRepository.setControl(topic, value)
     }
 }
 
@@ -200,5 +176,5 @@ private data class CoreState(
     val deviceInfo: DeviceInfo?,
     val columnCount: Int,
     val positions: List<PlacedWidget>,
-    val outputValues: Map<String, MqttValue>,
+    val outputValues: Map<String, TopicValue>,
 )

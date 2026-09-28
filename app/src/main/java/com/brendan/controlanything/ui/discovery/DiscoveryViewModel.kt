@@ -2,10 +2,10 @@ package com.brendan.controlanything.ui.discovery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.brendan.controlanything.data.discovery.NsdDiscoveryRepository
-import com.brendan.controlanything.data.discovery.WifiBindingHelper
-import com.brendan.controlanything.data.mqtt.MqttConnectionState
-import com.brendan.controlanything.data.mqtt.MqttRepository
+import com.brendan.controlanything.data.device.DeviceRepository
+import com.brendan.controlanything.data.discovery.DeviceDiscovery
+import com.brendan.controlanything.data.discovery.DeviceEndpoint
+import com.brendan.controlanything.data.pubsub.ConnectionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
@@ -13,15 +13,18 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class DiscoveryViewModel @Inject constructor(
-    private val wifiBindingHelper: WifiBindingHelper,
-    private val discoveryRepository: NsdDiscoveryRepository,
-    private val mqttRepository: MqttRepository,
+    private val discoveries: Set<@JvmSuppressWildcards DeviceDiscovery>,
+    private val deviceRepository: DeviceRepository,
 ) : ViewModel() {
+
+    /** Everything any transport's discovery needs, requested together before searching starts. */
+    val requiredPermissions: List<String> = discoveries.flatMap { it.requiredPermissions }.distinct()
 
     private val _uiState = MutableStateFlow<DiscoveryUiState>(DiscoveryUiState.Searching)
     val uiState = _uiState.asStateFlow()
@@ -34,39 +37,37 @@ class DiscoveryViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            mqttRepository.connectionState.collect { state ->
-                if (state is MqttConnectionState.Error) {
+            deviceRepository.connectionState.collect { state ->
+                if (state is ConnectionState.Error) {
                     _uiState.value = DiscoveryUiState.Error(state.message)
                 }
             }
         }
         viewModelScope.launch {
-            mqttRepository.deviceInfo.filterNotNull().collect {
+            deviceRepository.deviceInfo.filterNotNull().collect {
                 navigateToDashboardChannel.trySend(Unit)
             }
         }
     }
 
-    /** Must not be called until ACCESS_LOCAL_NETWORK has been granted - Wi-Fi binding and NSD both need it. */
+    /** Must not be called until [requiredPermissions] have been granted. */
     fun startDiscovery() {
         if (discoveryStarted) return
         discoveryStarted = true
         viewModelScope.launch {
-            wifiBindingHelper.bindToWifiNetwork().collect {
-                startDiscoveryIfNeeded()
-            }
-        }
-    }
-
-    private fun startDiscoveryIfNeeded() {
-        if (connectAttempted) return
-        viewModelScope.launch {
-            discoveryRepository.discoverBrokers().collect { broker ->
+            // Keeps collecting after the first device rather than taking first(): stopping
+            // discovery also releases transport-specific setup such as the Wi-Fi process binding,
+            // which must outlive the connection attempt.
+            merge(*discoveries.map { it.discover() }.toTypedArray()).collect { endpoint ->
                 if (connectAttempted) return@collect
                 connectAttempted = true
-                _uiState.value = DiscoveryUiState.Connecting(broker.serviceName)
-                mqttRepository.connect(broker.host, broker.port)
+                _uiState.value = DiscoveryUiState.Connecting(endpoint.name, endpoint.transportLabel())
+                deviceRepository.connect(endpoint)
             }
         }
     }
+}
+
+private fun DeviceEndpoint.transportLabel(): String = when (this) {
+    is DeviceEndpoint.WebSocket -> "Wi-Fi"
 }

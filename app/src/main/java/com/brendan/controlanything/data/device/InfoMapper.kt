@@ -1,4 +1,4 @@
-package com.brendan.controlanything.data.mqtt
+package com.brendan.controlanything.data.device
 
 import com.brendan.controlanything.domain.model.ButtonMode
 import com.brendan.controlanything.domain.model.ControlDef
@@ -6,9 +6,17 @@ import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.LedColor
 import com.brendan.controlanything.domain.model.OutputDef
 import com.brendan.controlanything.domain.model.SliderOrientation
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.jsonPrimitive
+
+// Unknown keys are ignored so the firmware can add schema fields ahead of the app understanding them.
+private val infoJson = Json { ignoreUnknownKeys = true }
+
+/** Parses a raw `info` payload; null if it isn't valid JSON or lacks a required field. */
+fun parseInfo(raw: String): DeviceInfo? =
+    runCatching { infoJson.decodeFromString<InfoMessage>(raw).toDeviceInfo() }.getOrNull()
 
 /** Unrecognized widget types (or a topic list too short for what the widget needs) are dropped rather than failing the whole parse. */
 fun InfoMessage.toDeviceInfo(): DeviceInfo = DeviceInfo(
