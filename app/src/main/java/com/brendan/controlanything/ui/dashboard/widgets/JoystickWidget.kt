@@ -75,7 +75,6 @@ fun JoystickWidget(
         Text(
             text = definition.displayName,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp),
         )
         Box(

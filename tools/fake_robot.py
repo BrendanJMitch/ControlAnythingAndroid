@@ -47,6 +47,18 @@ INFO_PAYLOAD = {
             "widget": {"type": "slider", "min": -1.0, "max": 4.0, "default_value": 1.5},
         },
         {
+            "topic": ["pitch"],
+            "display_name": "Pitch",
+            "type": "float",
+            "widget": {
+                "type": "slider",
+                "min": 0.0,
+                "max": 180.0,
+                "default_value": 90.0,
+                "orientation": "vertical",
+            },
+        },
+        {
             "topic": ["tilt"],
             "display_name": "Tilt",
             "type": "float",

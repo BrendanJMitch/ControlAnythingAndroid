@@ -51,13 +51,14 @@ fun WidgetFrame(
             .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
             .border(
                 width = if (isEditMode) 2.dp else 0.dp,
-                color = if (isEditMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                color = if (isEditMode) MaterialTheme.colorScheme.secondary else Color.Transparent,
                 shape = RoundedCornerShape(12.dp),
             ),
     ) {
         content()
 
         if (isEditMode && cellSizePx > 0f) {
+
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -88,7 +89,7 @@ fun WidgetFrame(
                     .align(Alignment.BottomEnd)
                     .offset { IntOffset(resizeOffset.x.roundToInt(), resizeOffset.y.roundToInt()) }
                     .size(24.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .background(MaterialTheme.colorScheme.secondary, CircleShape)
                     .pointerInput(position, others, columnCount, cellSizePx) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
