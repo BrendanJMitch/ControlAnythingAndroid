@@ -65,6 +65,22 @@ class DeviceRepositoryImplTest {
     }
 
     @Test
+    fun `info problems are reported, and a clean info reports none`() = runTest(UnconfinedTestDispatcher()) {
+        val repository = repository()
+        val problems = mutableListOf<InfoProblem>()
+        backgroundScope.launch { repository.infoProblems.toList(problems) }
+
+        connectAndReceiveInfo(repository, info(LIGHTS))
+        connectAndReceiveInfo(repository, "{not json")
+        val unknown = """{"topics": ["x"], "display_name": "Dial", "type": "float", "widget": {"type": "dial"}}"""
+        connectAndReceiveInfo(repository, info(LIGHTS, unknown))
+
+        assertEquals(listOf(true, false), problems.map { it.rejected })
+        assertEquals("{not json", problems[0].raw)
+        assertNotNull(repository.deviceInfo.value) // The partial schema still produces a dashboard.
+    }
+
+    @Test
     fun `setControl records the value and publishes it under controls`() = runTest(UnconfinedTestDispatcher()) {
         val repository = repository()
         connectAndReceiveInfo(repository, info(LIGHTS))
@@ -154,12 +170,12 @@ class DeviceRepositoryImplTest {
 
     private companion object {
         const val LIGHTS =
-            """{"topic": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle", "default_value": true}}"""
+            """{"topics": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle", "default_value": true}}"""
         const val SPEED =
-            """{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": -1.0, "max": 4.0, "default_value": 1.5}}"""
+            """{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": -1.0, "max": 4.0, "default_value": 1.5}}"""
         const val HORN =
-            """{"topic": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button"}}"""
+            """{"topics": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button"}}"""
         const val DRIVE =
-            """{"topic": ["drive_x", "drive_y"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}"""
+            """{"topics": ["drive_x", "drive_y"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}"""
     }
 }

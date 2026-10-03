@@ -20,13 +20,13 @@ data class InfoMessage(
 )
 
 /**
- * One control or output entry. Every widget type shares this same top-level shape - [topic] is
+ * One control or output entry. Every widget type shares this same top-level shape - [topics] is
  * always a list (single-element for most widgets), and any widget-specific configuration (a
- * slider's min/max, a joystick using topic[0]/topic[1] as its x/y axes, etc.) lives in [widget].
+ * slider's min/max, a joystick using topics[0]/topics[1] as its x/y axes, etc.) lives in [widget].
  */
 @Serializable
 data class WidgetSpecJson(
-    val topic: List<String>,
+    val topics: List<String>,
     val display_name: String,
     val type: String,
     val widget: WidgetJson,

@@ -14,41 +14,89 @@ import kotlinx.serialization.json.jsonPrimitive
 // Unknown keys are ignored so the firmware can add schema fields ahead of the app understanding them.
 private val infoJson = Json { ignoreUnknownKeys = true }
 
-/** Parses a raw `info` payload; null if it isn't valid JSON or lacks a required field. */
-fun parseInfo(raw: String): DeviceInfo? =
-    runCatching { infoJson.decodeFromString<InfoMessage>(raw).toDeviceInfo() }.getOrNull()
-
-/** Unrecognized widget types (or a topic list too short for what the widget needs) are dropped rather than failing the whole parse. */
-fun InfoMessage.toDeviceInfo(): DeviceInfo = DeviceInfo(
-    deviceId = device_id,
-    deviceName = device_name,
-    projectId = project_id,
-    schemaHash = schema_hash,
-    controls = controls.mapNotNull { it.toControlDef() },
-    outputs = outputs.mapNotNull { it.toOutputDef() },
+/**
+ * [info] is null if the payload was unusable as a whole. [problems] describes everything that
+ * didn't parse cleanly - including entries dropped from an otherwise usable schema - so a
+ * firmware/app mismatch can be reported instead of silently producing a blank or partial dashboard.
+ */
+data class InfoParseResult(
+    val info: DeviceInfo?,
+    val problems: List<String>,
 )
 
-private fun WidgetSpecJson.toControlDef(): ControlDef? = when (widget.type) {
-    "toggle" -> topic.getOrNull(0)?.let {
+/** Parses a raw `info` payload. Never throws. */
+fun parseInfo(raw: String): InfoParseResult {
+    val message = try {
+        infoJson.decodeFromString<InfoMessage>(raw)
+    } catch (e: IllegalArgumentException) { // SerializationException is a subclass.
+        return InfoParseResult(info = null, problems = listOf(e.message ?: e.javaClass.simpleName))
+    }
+    val problems = mutableListOf<String>()
+    val info = DeviceInfo(
+        deviceId = message.device_id,
+        deviceName = message.device_name,
+        projectId = message.project_id,
+        schemaHash = message.schema_hash,
+        controls = message.controls.mapEntries("controls", problems) { it.toControlDef() },
+        outputs = message.outputs.mapEntries("outputs", problems) { it.toOutputDef() },
+    )
+    return InfoParseResult(info, problems)
+}
+
+/** A mapped widget, or why it was dropped. */
+private sealed interface Mapped<out T> {
+    data class Ok<T>(val value: T) : Mapped<T>
+    data class Dropped(val reason: String) : Mapped<Nothing>
+}
+
+/**
+ * Unrecognized widget types (or a topic list too short for what the widget needs) are dropped
+ * rather than failing the whole parse, but each one is recorded in [problems].
+ */
+private fun <T> List<WidgetSpecJson>.mapEntries(
+    section: String,
+    problems: MutableList<String>,
+    map: (WidgetSpecJson) -> Mapped<T>,
+): List<T> = mapIndexedNotNull { index, spec ->
+    when (val mapped = map(spec)) {
+        is Mapped.Ok -> mapped.value
+        is Mapped.Dropped -> {
+            problems += "$section[$index] \"${spec.display_name}\" dropped: ${mapped.reason}"
+            null
+        }
+    }
+}
+
+private fun <T> WidgetSpecJson.withTopics(count: Int, build: (List<String>) -> T): Mapped<T> =
+    if (topics.size >= count) {
+        Mapped.Ok(build(topics))
+    } else {
+        Mapped.Dropped("${widget.type} needs $count topic(s), got ${topics.size}")
+    }
+
+private fun WidgetSpecJson.unknownType(): Mapped<Nothing> = Mapped.Dropped("unknown widget type \"${widget.type}\"")
+
+private fun WidgetSpecJson.toControlDef(): Mapped<ControlDef> = when (widget.type) {
+    "toggle" -> withTopics(1) {
         ControlDef.Toggle(
-            topic = it,
+            topic = it[0],
             displayName = display_name,
             defaultValue = widget.default_value?.jsonPrimitive?.booleanOrNull ?: false,
         )
     }
-    "button" -> topic.getOrNull(0)?.let {
+    "button" -> withTopics(1) {
         ControlDef.Button(
-            topic = it,
+            topic = it[0],
             displayName = display_name,
             mode = widget.mode.toButtonMode(),
         )
     }
-    "slider" -> topic.getOrNull(0)?.let {
+    "slider" -> withTopics(1) {
         val min = (widget.min ?: 0.0).toFloat()
         val max = (widget.max ?: 1.0).toFloat()
         val defaultValue = (widget.default_value?.jsonPrimitive?.floatOrNull ?: min).coerceIn(min, max)
         ControlDef.Slider(
-            topic = it,
+            topic = it[0],
             displayName = display_name,
             min = min,
             max = max,
@@ -56,22 +104,18 @@ private fun WidgetSpecJson.toControlDef(): ControlDef? = when (widget.type) {
             orientation = widget.orientation.toSliderOrientation(),
         )
     }
-    "joystick" -> {
-        val topicX = topic.getOrNull(0)
-        val topicY = topic.getOrNull(1)
-        if (topicX != null && topicY != null) ControlDef.Joystick(topicX, topicY, display_name) else null
-    }
-    else -> null
+    "joystick" -> withTopics(2) { ControlDef.Joystick(it[0], it[1], display_name) }
+    else -> unknownType()
 }
 
-private fun WidgetSpecJson.toOutputDef(): OutputDef? = when (widget.type) {
-    "numeric_readout" -> topic.getOrNull(0)?.let {
-        OutputDef.NumericReadout(topic = it, displayName = display_name, suffix = widget.suffix ?: "")
+private fun WidgetSpecJson.toOutputDef(): Mapped<OutputDef> = when (widget.type) {
+    "numeric_readout" -> withTopics(1) {
+        OutputDef.NumericReadout(topic = it[0], displayName = display_name, suffix = widget.suffix ?: "")
     }
-    "led_indicator" -> topic.getOrNull(0)?.let {
-        OutputDef.LedIndicator(topic = it, displayName = display_name, color = widget.color.toLedColor())
+    "led_indicator" -> withTopics(1) {
+        OutputDef.LedIndicator(topic = it[0], displayName = display_name, color = widget.color.toLedColor())
     }
-    else -> null
+    else -> unknownType()
 }
 
 private fun String?.toButtonMode(): ButtonMode =

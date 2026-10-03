@@ -10,7 +10,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,6 +31,10 @@ class DeviceRepositoryImpl @Inject constructor(
     private val _controlValues = MutableStateFlow<Map<String, TopicValue>>(emptyMap())
     override val controlValues = _controlValues.asStateFlow()
 
+    // Buffered so emitting from the info collector never suspends waiting on a slow UI collector.
+    private val _infoProblems = MutableSharedFlow<InfoProblem>(extraBufferCapacity = PROBLEM_BUFFER)
+    override val infoProblems = _infoProblems.asSharedFlow()
+
     // The last schema seen, kept across connections (unlike deviceInfo) so a reconnect to the
     // same project can tell which control values are still valid to carry over.
     private var lastInfo: DeviceInfo? = null
@@ -36,7 +42,11 @@ class DeviceRepositoryImpl @Inject constructor(
     init {
         scope.launch {
             pubSubClient.subscribe(INFO_TOPIC).collect { raw ->
-                parseInfo(raw)?.let(::onInfoReceived)
+                val result = parseInfo(raw)
+                if (result.problems.isNotEmpty()) {
+                    _infoProblems.tryEmit(InfoProblem(rejected = result.info == null, result.problems, raw))
+                }
+                result.info?.let(::onInfoReceived)
             }
         }
     }
@@ -88,6 +98,7 @@ class DeviceRepositoryImpl @Inject constructor(
         const val INFO_TOPIC = "info"
         const val CONTROLS_PREFIX = "controls/"
         const val OUTPUTS_PREFIX = "outputs/"
+        const val PROBLEM_BUFFER = 8
     }
 }
 

@@ -12,7 +12,7 @@ import org.junit.Test
 
 class InfoMapperTest {
 
-    private fun parse(json: String) = requireNotNull(parseInfo(json))
+    private fun parse(json: String) = requireNotNull(parseInfo(json).info)
 
     @Test
     fun `device_id and schema_hash are optional`() {
@@ -30,7 +30,7 @@ class InfoMapperTest {
               "device_name": "Test Rover",
               "project_id": "test_project",
               "firmware_version": "1.2.3",
-              "controls": [{"topic": ["lights"], "display_name": "Lights", "type": "bool", "icon": "bulb", "widget": {"type": "toggle", "haptics": true}}]
+              "controls": [{"topics": ["lights"], "display_name": "Lights", "type": "bool", "icon": "bulb", "widget": {"type": "toggle", "haptics": true}}]
             }
             """.trimIndent(),
         )
@@ -38,9 +38,54 @@ class InfoMapperTest {
     }
 
     @Test
-    fun `malformed or incomplete payloads yield null`() {
-        assertNull(parseInfo("not json"))
-        assertNull(parseInfo("""{"device_name": "Missing project id"}"""))
+    fun `malformed or incomplete payloads yield null info and a problem`() {
+        for (raw in listOf("not json", """{"device_name": "Missing project id"}""")) {
+            val result = parseInfo(raw)
+            assertNull(result.info)
+            assertEquals(1, result.problems.size)
+        }
+    }
+
+    @Test
+    fun `an entry using the singular topic key is rejected, naming the missing field`() {
+        val result = parseInfo(
+            controlsPayload("""{"topic": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}}"""),
+        )
+        assertNull(result.info)
+        assertTrue(result.problems.single(), "topics" in result.problems.single())
+    }
+
+    @Test
+    fun `a clean payload reports no problems`() {
+        val result = parseInfo(
+            controlsPayload("""{"topics": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}}"""),
+        )
+        assertEquals(emptyList<String>(), result.problems)
+    }
+
+    @Test
+    fun `every dropped entry is reported with its section and index`() {
+        val result = parseInfo(
+            """
+            {
+              "device_name": "Test Rover",
+              "project_id": "test_project",
+              "controls": [
+                {"topics": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}},
+                {"topics": ["drive_x"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}
+              ],
+              "outputs": [{"topics": ["mystery"], "display_name": "Mystery", "type": "float", "widget": {"type": "dial"}}]
+            }
+            """.trimIndent(),
+        )
+        assertEquals(listOf(ControlDef.Toggle("lights", "Lights")), result.info?.controls)
+        assertEquals(
+            listOf(
+                "controls[1] \"Drive\" dropped: joystick needs 2 topic(s), got 1",
+                "outputs[0] \"Mystery\" dropped: unknown widget type \"dial\"",
+            ),
+            result.problems,
+        )
     }
 
     @Test
@@ -65,7 +110,7 @@ class InfoMapperTest {
 
     @Test
     fun `toggle defaults to false when default_value is omitted`() {
-        val info = parse(controlsPayload("""{"topic": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}}"""))
+        val info = parse(controlsPayload("""{"topics": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}}"""))
         assertEquals(listOf(ControlDef.Toggle("lights", "Lights", defaultValue = false)), info.controls)
     }
 
@@ -73,7 +118,7 @@ class InfoMapperTest {
     fun `toggle honors an explicit default_value`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle", "default_value": true}}""",
+                """{"topics": ["lights"], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle", "default_value": true}}""",
             ),
         )
         assertEquals(listOf(ControlDef.Toggle("lights", "Lights", defaultValue = true)), info.controls)
@@ -81,7 +126,7 @@ class InfoMapperTest {
 
     @Test
     fun `button defaults to STATE mode when mode is omitted`() {
-        val info = parse(controlsPayload("""{"topic": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button"}}"""))
+        val info = parse(controlsPayload("""{"topics": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button"}}"""))
         assertEquals(listOf(ControlDef.Button("horn", "Horn", mode = ButtonMode.STATE)), info.controls)
     }
 
@@ -89,7 +134,7 @@ class InfoMapperTest {
     fun `button honors an explicit mode, case-insensitively`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button", "mode": "Rising"}}""",
+                """{"topics": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button", "mode": "Rising"}}""",
             ),
         )
         assertEquals(listOf(ControlDef.Button("horn", "Horn", mode = ButtonMode.RISING)), info.controls)
@@ -99,7 +144,7 @@ class InfoMapperTest {
     fun `button falls back to STATE mode for an unrecognized mode string`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button", "mode": "sideways"}}""",
+                """{"topics": ["horn"], "display_name": "Horn", "type": "bool", "widget": {"type": "button", "mode": "sideways"}}""",
             ),
         )
         assertEquals(listOf(ControlDef.Button("horn", "Horn", mode = ButtonMode.STATE)), info.controls)
@@ -109,7 +154,7 @@ class InfoMapperTest {
     fun `parses a slider control with explicit min and max`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": -2.0, "max": 2.0}}""",
+                """{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": -2.0, "max": 2.0}}""",
             ),
         )
         assertEquals(listOf(ControlDef.Slider("speed", "Speed", -2f, 2f, defaultValue = -2f)), info.controls)
@@ -117,7 +162,7 @@ class InfoMapperTest {
 
     @Test
     fun `slider falls back to 0 to 1 when min and max are omitted`() {
-        val info = parse(controlsPayload("""{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider"}}"""))
+        val info = parse(controlsPayload("""{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider"}}"""))
         assertEquals(listOf(ControlDef.Slider("speed", "Speed", 0f, 1f, defaultValue = 0f)), info.controls)
     }
 
@@ -125,7 +170,7 @@ class InfoMapperTest {
     fun `slider honors an explicit default_value`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": -2.0, "max": 2.0, "default_value": 0.5}}""",
+                """{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": -2.0, "max": 2.0, "default_value": 0.5}}""",
             ),
         )
         assertEquals(0.5f, (info.controls.single() as ControlDef.Slider).defaultValue)
@@ -135,7 +180,7 @@ class InfoMapperTest {
     fun `slider default_value outside min-max is clamped`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": 0.0, "max": 1.0, "default_value": 5.0}}""",
+                """{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "min": 0.0, "max": 1.0, "default_value": 5.0}}""",
             ),
         )
         assertEquals(1f, (info.controls.single() as ControlDef.Slider).defaultValue)
@@ -143,7 +188,7 @@ class InfoMapperTest {
 
     @Test
     fun `slider defaults to horizontal orientation`() {
-        val info = parse(controlsPayload("""{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider"}}"""))
+        val info = parse(controlsPayload("""{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider"}}"""))
         assertEquals(SliderOrientation.HORIZONTAL, (info.controls.single() as ControlDef.Slider).orientation)
     }
 
@@ -151,7 +196,7 @@ class InfoMapperTest {
     fun `slider honors an explicit vertical orientation`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "orientation": "vertical"}}""",
+                """{"topics": ["speed"], "display_name": "Speed", "type": "float", "widget": {"type": "slider", "orientation": "vertical"}}""",
             ),
         )
         assertEquals(SliderOrientation.VERTICAL, (info.controls.single() as ControlDef.Slider).orientation)
@@ -161,7 +206,7 @@ class InfoMapperTest {
     fun `parses a joystick's two topics by position`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["drive_x", "drive_y"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}""",
+                """{"topics": ["drive_x", "drive_y"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}""",
             ),
         )
         assertEquals(listOf(ControlDef.Joystick("drive_x", "drive_y", "Drive")), info.controls)
@@ -171,7 +216,7 @@ class InfoMapperTest {
     fun `joystick with only one topic is dropped`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["drive_x"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}""",
+                """{"topics": ["drive_x"], "display_name": "Drive", "type": "float", "widget": {"type": "joystick"}}""",
             ),
         )
         assertTrue(info.controls.isEmpty())
@@ -181,7 +226,7 @@ class InfoMapperTest {
     fun `unknown widget type is dropped instead of failing the parse`() {
         val info = parse(
             controlsPayload(
-                """{"topic": ["mystery"], "display_name": "Mystery", "type": "float", "widget": {"type": "dial"}}""",
+                """{"topics": ["mystery"], "display_name": "Mystery", "type": "float", "widget": {"type": "dial"}}""",
             ),
         )
         assertTrue(info.controls.isEmpty())
@@ -190,7 +235,7 @@ class InfoMapperTest {
     @Test
     fun `numeric readout defaults to an empty suffix`() {
         val info = parse(
-            outputsPayload("""{"topic": ["battery"], "display_name": "Battery", "type": "float", "widget": {"type": "numeric_readout"}}"""),
+            outputsPayload("""{"topics": ["battery"], "display_name": "Battery", "type": "float", "widget": {"type": "numeric_readout"}}"""),
         )
         assertEquals(listOf(OutputDef.NumericReadout("battery", "Battery", suffix = "")), info.outputs)
     }
@@ -199,7 +244,7 @@ class InfoMapperTest {
     fun `numeric readout honors an explicit suffix`() {
         val info = parse(
             outputsPayload(
-                """{"topic": ["battery"], "display_name": "Battery", "type": "float", "widget": {"type": "numeric_readout", "suffix": "V"}}""",
+                """{"topics": ["battery"], "display_name": "Battery", "type": "float", "widget": {"type": "numeric_readout", "suffix": "V"}}""",
             ),
         )
         assertEquals(listOf(OutputDef.NumericReadout("battery", "Battery", suffix = "V")), info.outputs)
@@ -208,7 +253,7 @@ class InfoMapperTest {
     @Test
     fun `led indicator defaults to green`() {
         val info = parse(
-            outputsPayload("""{"topic": ["status"], "display_name": "Status", "type": "bool", "widget": {"type": "led_indicator"}}"""),
+            outputsPayload("""{"topics": ["status"], "display_name": "Status", "type": "bool", "widget": {"type": "led_indicator"}}"""),
         )
         assertEquals(listOf(OutputDef.LedIndicator("status", "Status", color = LedColor.GREEN)), info.outputs)
     }
@@ -217,7 +262,7 @@ class InfoMapperTest {
     fun `led indicator honors an explicit color, case-insensitively`() {
         val info = parse(
             outputsPayload(
-                """{"topic": ["status"], "display_name": "Status", "type": "bool", "widget": {"type": "led_indicator", "color": "cyan"}}""",
+                """{"topics": ["status"], "display_name": "Status", "type": "bool", "widget": {"type": "led_indicator", "color": "cyan"}}""",
             ),
         )
         assertEquals(listOf(OutputDef.LedIndicator("status", "Status", color = LedColor.CYAN)), info.outputs)
@@ -227,7 +272,7 @@ class InfoMapperTest {
     fun `led indicator falls back to green for an unrecognized color`() {
         val info = parse(
             outputsPayload(
-                """{"topic": ["status"], "display_name": "Status", "type": "bool", "widget": {"type": "led_indicator", "color": "mauve"}}""",
+                """{"topics": ["status"], "display_name": "Status", "type": "bool", "widget": {"type": "led_indicator", "color": "mauve"}}""",
             ),
         )
         assertEquals(listOf(OutputDef.LedIndicator("status", "Status", color = LedColor.GREEN)), info.outputs)
@@ -235,7 +280,7 @@ class InfoMapperTest {
 
     @Test
     fun `entry with an empty topic list is dropped`() {
-        val info = parse(controlsPayload("""{"topic": [], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}}"""))
+        val info = parse(controlsPayload("""{"topics": [], "display_name": "Lights", "type": "bool", "widget": {"type": "toggle"}}"""))
         assertTrue(info.controls.isEmpty())
         assertNull(info.controls.firstOrNull())
     }

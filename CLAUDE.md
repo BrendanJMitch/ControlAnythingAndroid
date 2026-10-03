@@ -33,14 +33,17 @@ it, renders widgets, and lets the user rearrange them on a grid. The embedded li
 - Subscriptions are local only - nothing is sent over the wire to subscribe.
 - Liveness: WebSocket ping/pong, driven by the app (OkHttp `pingInterval`, 3 s).
 - `info` shape: `device_name, project_id, controls[], outputs[]` plus optional `device_id`,
-  `schema_hash`; each entry is `{topic: [..], display_name, type, widget: {type, min, max,
-  default_value, orientation, color, suffix, mode}}`. `topic` is always a list; joystick uses `[x, y]`.
-  Unknown keys are ignored.
+  `schema_hash`; each entry is `{topics: [..], display_name, type, widget: {type, min, max,
+  default_value, orientation, color, suffix, mode}}`. `topics` is always a list (plural because
+  it's an array); joystick uses `[x, y]`. Unknown keys are ignored.
 - Controls: `toggle`, `button` (mode `rising|falling|state`), `slider` (min/max/default/orientation),
   `joystick` (axes normalized to [-1,1], +y = up; x and y sent as separate messages).
   Outputs: `numeric_readout` (suffix), `led_indicator` (color).
 - Values are plain text: `true`/`false` or a float string.
-- Unknown widget types / too-short topic lists are silently dropped by `InfoMapper`, not errors.
+- Unknown widget types / too-short topic lists are dropped by `InfoMapper`, not errors. Anything
+  that doesn't parse cleanly (rejected payload or dropped entries) is emitted on
+  `DeviceRepository.infoProblems`; `ControlAnythingApplication` logs it (tag `ControlAnything`) and
+  toasts the user.
 
 ## Architecture (`app/src/main/java/com/brendan/controlanything/`)
 

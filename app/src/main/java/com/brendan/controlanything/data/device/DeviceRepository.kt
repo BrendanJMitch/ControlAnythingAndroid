@@ -23,6 +23,12 @@ interface DeviceRepository {
      */
     val controlValues: StateFlow<Map<String, TopicValue>>
 
+    /**
+     * One event per `info` payload that didn't parse cleanly. Hot and not replayed: a collector
+     * only sees problems raised while it's collecting.
+     */
+    val infoProblems: Flow<InfoProblem>
+
     fun connect(endpoint: DeviceEndpoint)
 
     fun disconnect()
@@ -32,3 +38,13 @@ interface DeviceRepository {
     /** Records and sends a control value (never retained - controls are fire-and-forget). */
     fun setControl(topic: String, value: TopicValue)
 }
+
+/**
+ * An `info` payload that didn't parse cleanly. [rejected] means nothing usable came of it (so no
+ * dashboard); otherwise some entries were dropped. [raw] is kept so the payload can be logged.
+ */
+data class InfoProblem(
+    val rejected: Boolean,
+    val problems: List<String>,
+    val raw: String,
+)

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">ControlAnything</string>
+    <string name="info_rejected_toast">Couldn\'t read the device\'s schema. Details were logged.</string>
+    <string name="info_partial_toast">Some of the device\'s widgets couldn\'t be shown. Details were logged.</string>
 </resources>

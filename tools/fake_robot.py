@@ -43,25 +43,25 @@ INFO_PAYLOAD = {
     "schema_hash": "demo1",
     "controls": [
         {
-            "topic": ["lights"],
+            "topics": ["lights"],
             "display_name": "Lights",
             "type": "bool",
             "widget": {"type": "toggle", "default_value": True},
         },
         {
-            "topic": ["horn"],
+            "topics": ["horn"],
             "display_name": "Horn",
             "type": "bool",
             "widget": {"type": "button", "mode": "rising"},
         },
         {
-            "topic": ["speed"],
+            "topics": ["speed"],
             "display_name": "Speed",
             "type": "float",
             "widget": {"type": "slider", "min": -1.0, "max": 4.0, "default_value": 1.5},
         },
         {
-            "topic": ["pitch"],
+            "topics": ["pitch"],
             "display_name": "Pitch",
             "type": "float",
             "widget": {
@@ -73,7 +73,7 @@ INFO_PAYLOAD = {
             },
         },
         {
-            "topic": ["tilt"],
+            "topics": ["tilt"],
             "display_name": "Tilt",
             "type": "float",
             "widget": {
@@ -85,7 +85,7 @@ INFO_PAYLOAD = {
             },
         },
         {
-            "topic": ["drive_x", "drive_y"],
+            "topics": ["drive_x", "drive_y"],
             "display_name": "Drive",
             "type": "float",
             "widget": {"type": "joystick"},
@@ -93,13 +93,13 @@ INFO_PAYLOAD = {
     ],
     "outputs": [
         {
-            "topic": ["battery_voltage"],
+            "topics": ["battery_voltage"],
             "display_name": "Battery",
             "type": "float",
             "widget": {"type": "numeric_readout", "suffix": "V"},
         },
         {
-            "topic": ["status_led"],
+            "topics": ["status_led"],
             "display_name": "Status",
             "type": "bool",
             "widget": {"type": "led_indicator", "color": "cyan"},
